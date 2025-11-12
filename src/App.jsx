@@ -8,34 +8,54 @@ function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const [cart, setCart] = useState([])
   const [loading, setLoading] = useState(false)
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState('')
   const baseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
+  const fetchProducts = async (q = '', cat = '') => {
+    const params = new URLSearchParams()
+    if (q) params.set('q', q)
+    if (cat) params.set('category', cat)
+    const url = `${baseUrl}/products${params.toString() ? `?${params.toString()}` : ''}`
+    const res = await fetch(url)
+    const data = await res.json()
+    setProducts(Array.isArray(data) ? data : [])
+  }
+
   useEffect(() => {
-    fetch(`${baseUrl}/products`).then(r => r.json()).then(setProducts).catch(() => setProducts([]))
+    fetchProducts().catch(() => setProducts([]))
   }, [baseUrl])
 
-  const addToCart = (product) => {
+  const handleSearch = (e) => {
+    e.preventDefault()
+    fetchProducts(query, category)
+  }
+
+  const addToCart = (product, size) => {
     setCart((prev) => {
-      const exist = prev.find(p => p.id === product.id)
-      if (exist) return prev.map(p => p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p)
-      return [...prev, { id: product.id, title: product.title, price: product.price, image: product.image, quantity: 1 }]
+      const keyMatch = (p) => p.id === product.id && String(p.size || '') === String(size || '')
+      const exist = prev.find(keyMatch)
+      if (exist) return prev.map(p => keyMatch(p) ? { ...p, quantity: p.quantity + 1 } : p)
+      return [...prev, { id: product.id, title: product.title, price: product.price, image: product.image, quantity: 1, size }]
     })
     setCartOpen(true)
   }
 
-  const changeQty = (id, qty) => {
-    setCart((prev) => prev.map(p => p.id === id ? { ...p, quantity: qty } : p))
+  const changeQty = (id, qty, size) => {
+    setCart((prev) => prev.map(p => (p.id === id && String(p.size||'')===String(size||'')) ? { ...p, quantity: qty } : p))
   }
 
-  const removeItem = (id) => setCart((prev) => prev.filter(p => p.id !== id))
+  const removeItem = (id, size) => setCart((prev) => prev.filter(p => !(p.id === id && String(p.size||'')===String(size||''))))
 
   const total = useMemo(() => cart.reduce((a, c) => a + c.price * c.quantity, 0), [cart])
 
-  const checkout = async () => {
+  const [orderResult, setOrderResult] = useState(null)
+
+  const checkout = async (paymentMethod) => {
     setLoading(true)
     try {
       const payload = {
-        items: cart.map(c => ({ product_id: c.id, quantity: c.quantity })),
+        items: cart.map(c => ({ product_id: c.id, quantity: c.quantity, size: c.size })),
         customer: {
           name: 'Pelanggan Sepatuku',
           email: 'pelanggan@example.com',
@@ -57,9 +77,6 @@ function App() {
     }
   }
 
-  const [paymentMethod, setPaymentMethod] = useState('COD')
-  const [orderResult, setOrderResult] = useState(null)
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-sky-50">
       <Header cartCount={cart.length} onCartClick={() => setCartOpen(true)} />
@@ -72,10 +89,18 @@ function App() {
             <div>
               <h1 className="text-4xl md:text-5xl font-black tracking-tight text-gray-900">Sepatuku</h1>
               <p className="mt-3 text-gray-600">Toko sepatu modern dengan pilihan terbaik untuk gaya harian maupun olahraga. Warna putih bersih dengan aksen biru langit yang segar.</p>
-              <div className="mt-6 inline-flex items-center gap-3">
-                <a href="#produk" className="px-5 py-3 rounded-xl bg-sky-500 text-white font-bold shadow hover:bg-sky-600">Belanja Sekarang</a>
-                <a href="/test" className="px-5 py-3 rounded-xl border border-sky-200 text-sky-600 font-bold bg-white hover:bg-sky-50">Cek Koneksi</a>
-              </div>
+              <form onSubmit={handleSearch} className="mt-6 grid sm:grid-cols-[1fr,160px,auto] gap-3">
+                <input value={query} onChange={(e)=>setQuery(e.target.value)} placeholder="Cari produk, kategori, brand..." className="px-4 py-3 rounded-xl border border-sky-200 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300" />
+                <select value={category} onChange={(e)=>setCategory(e.target.value)} className="px-4 py-3 rounded-xl border border-sky-200 bg-white focus:outline-none focus:ring-2 focus:ring-sky-300">
+                  <option value="">Semua Kategori</option>
+                  <option>Running</option>
+                  <option>Casual</option>
+                  <option>Sneakers</option>
+                  <option>Outdoor</option>
+                  <option>Lifestyle</option>
+                </select>
+                <button type="submit" className="px-5 py-3 rounded-xl bg-sky-500 text-white font-bold shadow hover:bg-sky-600">Cari</button>
+              </form>
             </div>
             <div className="md:justify-self-end">
               <div className="relative">
@@ -94,27 +119,6 @@ function App() {
             ))}
           </div>
         </section>
-
-        <section className="mb-20 rounded-3xl bg-white border border-sky-100 p-6">
-          <h3 className="text-lg font-bold text-gray-900">Metode Pembayaran</h3>
-          <div className="mt-3 grid sm:grid-cols-2 gap-4">
-            <label className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer ${paymentMethod==='COD' ? 'border-sky-400 bg-sky-50' : 'border-sky-100'}`}>
-              <input type="radio" name="pm" className="accent-sky-500" checked={paymentMethod==='COD'} onChange={() => setPaymentMethod('COD')} />
-              <div>
-                <p className="font-semibold text-gray-900">Bayar di Tempat (COD)</p>
-                <p className="text-sm text-gray-500">Bayar tunai saat pesanan diterima</p>
-              </div>
-            </label>
-            <label className={`flex items-center gap-3 p-4 rounded-2xl border cursor-pointer ${paymentMethod==='QRIS' ? 'border-sky-400 bg-sky-50' : 'border-sky-100'}`}>
-              <input type="radio" name="pm" className="accent-sky-500" checked={paymentMethod==='QRIS'} onChange={() => setPaymentMethod('QRIS')} />
-              <div>
-                <p className="font-semibold text-gray-900">QRIS</p>
-                <p className="text-sm text-gray-500">Bayar cepat via QRIS</p>
-              </div>
-            </label>
-          </div>
-          <div className="mt-4 text-sm text-gray-600">Total saat ini: <span className="font-bold text-sky-600">Rp {total.toLocaleString('id-ID')}</span></div>
-        </section>
       </main>
 
       <CartDrawer
@@ -131,7 +135,6 @@ function App() {
         <div className="fixed inset-0 z-40 grid place-items-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full border border-sky-100">
             <h3 className="text-xl font-bold text-gray-900">Pesanan Dibuat</h3>
-            <p className="text-gray-600 mt-1">Metode: <span className="font-semibold">{orderResult.payment_method}</span></p>
             <p className="text-gray-900 font-bold mt-2">Total: Rp {orderResult.total?.toLocaleString('id-ID')}</p>
             {orderResult.qris_qr_url && (
               <div className="mt-4">
